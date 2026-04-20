@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>My Routine Reminders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;600&family=Raleway:wght@400;600&family=Nunito:wght@400;600&family=DM+Sans:wght@400;600&family=Josefin+Sans:wght@400;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#F2EBE0;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const C = {
+  bg:"#F2EBE0", card:"#E8E0D0", cardAlt:"#F5F2EC", taupe:"#B5A898",
+  peanut:"#9C7B6B", peach:"#F0DDD0", white:"#FDFAF7", text:"#5a4a42", textLight:"#9a8a82",
+};
+
+const FONTS = [
+  { label:"Georgia (Classic)", value:"'Georgia', serif" },
+  { label:"Playfair Display (Elegant)", value:"'Playfair Display', serif" },
+  { label:"Cormorant Garamond (Luxury)", value:"'Cormorant Garamond', serif" },
+  { label:"Lora (Literary)", value:"'Lora', serif" },
+  { label:"Raleway (Modern)", value:"'Raleway', sans-serif" },
+  { label:"Nunito (Soft & Round)", value:"'Nunito', sans-serif" },
+  { label:"DM Sans (Clean)", value:"'DM Sans', sans-serif" },
+  { label:"Josefin Sans (Minimal)", value:"'Josefin Sans', sans-serif" },
+];
+
+const FONT_SIZES = [
+  { label:"Small", base:13 },
+  { label:"Medium", base:15 },
+  { label:"Large", base:17 },
+  { label:"Extra Large", base:19 },
+];
+
+const DEFAULT_CAT_COLORS = { Pilates:"#9C7B6B", Beauty:"#B5A898", Shopping:"#c4a882", Other:"#b8b0a0" };
+const FREQ_OPTIONS = ["weekly","monthly","every X days"];
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const DEFAULT_CATS = ["Pilates","Beauty","Shopping","Other"];
+const EXTRA_COLORS = ["#a8b5a0","#b0a8c0","#a8b0c0","#c0b0a0","#b8c0a8","#c0a8b0"];
+let ci = 0;
+
+function getTodayStr(){return new Date().toISOString().split("T")[0];}
+function addDays(ds,n){const d=new Date(ds);d.setDate(d.getDate()+n);return d.toISOString().split("T")[0];}
+function formatDate(ds){return new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
+function getDow(ds){const d=new Date(ds+"T00:00:00");return["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][d.getDay()===0?6:d.getDay()-1];}
+function daysUntil(ds){return Math.round((new Date(ds+"T00:00:00")-new Date(getTodayStr()))/86400000);}
+
+function nextOccurrences(item,count=4){
+  const today=getTodayStr(),results=[];
+  if(item.freq==="weekly"){
+    const map={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+    const dow=new Date(today+"T00:00:00").getDay(),ti=dow===0?6:dow-1;
+    const sel=(item.days||[]).map(d=>map[d]).sort((a,b)=>a-b);
+    if(!sel.length)return[];
+    let off=0,ch=0;
+    while(results.length<count&&ch<60){const idx=(ti+off)%7;if(sel.includes(idx)){const d=addDays(today,off);results.push({date:d,remind:addDays(d,-(item.advanceDays||0))});}off++;ch++;}
+  }else if(item.freq==="monthly"){
+    const d=new Date(today+"T00:00:00");
+    for(let i=0;results.length<count&&i<count+3;i++){const yr=d.getFullYear()+Math.floor((d.getMonth()+i)/12),mo=(d.getMonth()+i)%12,day=Math.min(item.monthDay||1,new Date(yr,mo+1,0).getDate()),occ=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;if(occ>=today)results.push({date:occ,remind:addDays(occ,-(item.advanceDays||0))});}
+  }else if(item.freq==="every X days"){
+    let start=item.startDate||today;
+    while(start<today)start=addDays(start,item.intervalDays||30);
+    for(let i=0;i<count;i++){const occ=addDays(start,i*(item.intervalDays||30));results.push({date:occ,remind:addDays(occ,-(item.advanceDays||0))});}
+  }
+  return results;
+}
+
+const DEFAULT_ITEMS=[
+  {id:1,name:"Pilates Payment",cat:"Pilates",freq:"monthly",monthDay:1,advanceDays:3,done:{},memo:"",link:"",linkLabel:""},
+  {id:2,name:"Pilates Class (Wed)",cat:"Pilates",freq:"weekly",days:["Wed"],advanceDays:2,done:{},memo:"",link:"https://wa.me/",linkLabel:"💬 WhatsApp to Book"},
+  {id:3,name:"Pilates Class (Sat)",cat:"Pilates",freq:"weekly",days:["Sat"],advanceDays:2,done:{},memo:"",link:"https://wa.me/",linkLabel:"💬 WhatsApp to Book"},
+  {id:4,name:"Lash Treatment",cat:"Beauty",freq:"monthly",monthDay:15,advanceDays:7,done:{},memo:"",link:"https://wa.me/",linkLabel:"💬 Book Lash"},
+  {id:5,name:"Facial Treatment",cat:"Beauty",freq:"monthly",monthDay:20,advanceDays:7,done:{},memo:"",link:"https://wa.me/",linkLabel:"💬 Book Facial"},
+  {id:6,name:"R1 Dark Circle Treatment",cat:"Beauty",freq:"monthly",monthDay:25,advanceDays:7,done:{},memo:"",link:"https://wa.me/",linkLabel:"💬 Book R1"},
+  {id:7,name:"Hair Treatment",cat:"Beauty",freq:"every X days",intervalDays:50,startDate:getTodayStr(),advanceDays:7,done:{},memo:"",link:"https://wa.me/",linkLabel:"💬 Book Hair"},
+  {id:8,name:"HKTVmall Shopping",cat:"Shopping",freq:"weekly",days:["Fri"],advanceDays:0,done:{},memo:"🛍️ Shopping list:\n- ",link:"https://www.hktvmall.com",linkLabel:"🛒 Open HKTVmall"},
+];
+
+function useStorage(key,fallback){
+  const [val,setVal]=useState(()=>{try{const s=localStorage.getItem(key);return s?JSON.parse(s):fallback;}catch{return fallback;}});
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(val));}catch{}},[key,val]);
+  return[val,setVal];
+}
+
+function makeStyles(font,baseSize){
+  const fs=n=>n+(baseSize-15);
+  return{
+    app:{minHeight:"100vh",background:C.bg,fontFamily:font,color:C.text,paddingBottom:80},
+    header:{background:C.peanut,padding:"28px 24px 18px",textAlign:"center",position:"relative"},
+    title:{fontSize:fs(28),fontWeight:"normal",color:"#fff",letterSpacing:1,margin:0,fontFamily:font},
+    subtitle:{color:"#f0e8e0",fontSize:fs(13),marginTop:4,fontFamily:font},
+    section:{padding:"18px 16px 0"},
+    secTitle:{fontSize:fs(12),letterSpacing:2,textTransform:"uppercase",color:C.taupe,marginBottom:10,fontFamily:font},
+    card:{background:C.white,borderRadius:16,padding:"14px 16px",marginBottom:10,boxShadow:"0 2px 10px rgba(150,120,100,0.10)",borderLeft:"3px solid "+C.peach},
+    row:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8},
+    itemName:{fontWeight:"bold",fontSize:fs(16),color:C.text,fontFamily:font},
+    tag:{borderRadius:20,padding:"2px 10px",fontSize:fs(11),fontFamily:font,color:"#fff",fontWeight:"bold",whiteSpace:"nowrap"},
+    occChip:{borderRadius:8,padding:"5px 11px",fontSize:fs(13),fontFamily:font,color:C.text,display:"inline-block"},
+    remindBadge:{fontSize:fs(12),fontFamily:font,color:C.taupe,marginTop:2},
+    urgentBadge:{fontSize:fs(12),fontFamily:font,color:"#b05040",fontWeight:"bold",marginTop:2},
+    doneBtn:{border:"none",borderRadius:20,padding:"4px 13px",fontSize:fs(12),cursor:"pointer",fontFamily:font},
+    modal:{position:"fixed",inset:0,background:"rgba(80,60,50,0.32)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100},
+    modalBox:{background:C.white,borderRadius:18,padding:"26px 22px",width:"92%",maxWidth:420,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(130,100,80,0.18)"},
+    label:{fontSize:fs(13),color:C.taupe,fontFamily:font,display:"block",marginBottom:4,marginTop:12},
+    input:{width:"100%",border:"1px solid "+C.card,borderRadius:8,padding:"8px 10px",fontSize:fs(14),background:C.bg,color:C.text,boxSizing:"border-box",fontFamily:font},
+    textarea:{width:"100%",border:"1px solid "+C.card,borderRadius:8,padding:"8px 10px",fontSize:fs(13),background:C.bg,color:C.text,boxSizing:"border-box",fontFamily:font,resize:"vertical",minHeight:70},
+    select:{width:"100%",border:"1px solid "+C.card,borderRadius:8,padding:"8px 10px",fontSize:fs(14),background:C.bg,color:C.text,fontFamily:font},
+    dayBtn:sel=>({border:"1.5px solid "+(sel?C.peanut:C.card),borderRadius:20,padding:"5px 11px",fontSize:fs(13),cursor:"pointer",background:sel?C.peanut:C.white,color:sel?"#fff":C.text,fontFamily:font}),
+    saveBtn:{width:"100%",background:C.peanut,color:"#fff",border:"none",borderRadius:24,padding:"12px",fontSize:fs(15),cursor:"pointer",marginTop:18,fontFamily:font},
+    cancelBtn:{width:"100%",background:C.card,color:C.text,border:"none",borderRadius:24,padding:"12px",fontSize:fs(14),cursor:"pointer",marginTop:8,fontFamily:font},
+    todayBox:{background:C.peanut,borderRadius:16,padding:"14px 18px",margin:"16px 16px 0",color:"#fff"},
+    iconBtn:{background:"none",border:"none",cursor:"pointer",fontSize:fs(16),padding:"0 3px",lineHeight:1,color:C.taupe},
+    memoBox:{background:C.peach,borderRadius:8,padding:"8px 10px",marginTop:6,fontSize:fs(13),fontFamily:font,color:C.text,whiteSpace:"pre-wrap",lineHeight:1.6},
+    memoTA:{width:"100%",border:"none",borderRadius:8,padding:"6px 8px",fontSize:fs(13),background:C.card,color:C.text,boxSizing:"border-box",fontFamily:font,resize:"vertical",minHeight:60,outline:"none"},
+    linkBtn:{display:"inline-flex",alignItems:"center",gap:5,background:C.taupe,color:"#fff",border:"none",borderRadius:20,padding:"6px 15px",fontSize:fs(13),cursor:"pointer",fontFamily:font,textDecoration:"none",marginTop:6},
+    divider:{borderTop:"1px solid "+C.card,margin:"10px 0"},
+    ghostBtn:{background:"none",border:"none",color:C.taupe,fontSize:fs(12),cursor:"pointer",fontFamily:font,padding:"2px 0"},
+    bottomBtns:{display:"flex",gap:10,justifyContent:"center",margin:"22px 16px 0",flexWrap:"wrap"},
+    actionBtn:bg=>({background:bg,color:"#fff",border:"none",borderRadius:24,padding:"12px 26px",fontSize:fs(14),cursor:"pointer",fontFamily:font}),
+    settingsBar:{background:C.cardAlt,borderRadius:14,margin:"14px 16px 0",padding:"12px 16px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"},
+    settingsLabel:{fontSize:fs(12),color:C.taupe,fontFamily:font,marginRight:4},
+    settingsSelect:{border:"1px solid "+C.card,borderRadius:8,padding:"5px 8px",fontSize:fs(12),background:C.white,color:C.text,fontFamily:font,cursor:"pointer"},
+  };
+}
+
+function FormFields({st,freq,setFreq,days,setDays,monthDay,setMonthDay,intervalDays,setIntervalDays,advanceDays,setAdvanceDays,startDate,setStartDate,memo,setMemo,link,setLink,linkLabel,setLinkLabel}){
+  const toggle=d=>setDays(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d]);
+  return(
+    <React.Fragment>
+      <label style={st.label}>Frequency</label>
+      <select style={st.select} value={freq} onChange={e=>setFreq(e.target.value)}>{FREQ_OPTIONS.map(f=><option key={f}>{f}</option>)}</select>
+      {freq==="weekly"&&<React.Fragment><label style={st.label}>Days of the Week</label><div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>{DAYS.map(d=><button key={d} style={st.dayBtn(days.includes(d))} onClick={()=>toggle(d)}>{d}</button>)}</div></React.Fragment>}
+      {freq==="monthly"&&<React.Fragment><label style={st.label}>Day of Month</label><input style={st.input} type="number" min="1" max="28" value={monthDay} onChange={e=>setMonthDay(e.target.value)}/></React.Fragment>}
+      {freq==="every X days"&&<React.Fragment><label style={st.label}>Every how many days?</label><input style={st.input} type="number" min="1" value={intervalDays} onChange={e=>setIntervalDays(e.target.value)}/><label style={st.label}>Starting from</label><input style={st.input} type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}/></React.Fragment>}
+      <label style={st.label}>Book/remind how many days in advance?</label>
+      <input style={st.input} type="number" min="0" value={advanceDays} onChange={e=>setAdvanceDays(e.target.value)}/>
+      <label style={st.label}>📝 Notes / Memo</label>
+      <textarea style={st.textarea} value={memo} onChange={e=>setMemo(e.target.value)} placeholder="e.g. Shopping list, notes..."/>
+      <label style={st.label}>🔗 Quick Link URL</label>
+      <input style={st.input} value={link} onChange={e=>setLink(e.target.value)} placeholder="https://wa.me/... or https://..."/>
+      <label style={st.label}>🏷️ Button Label</label>
+      <input style={st.input} value={linkLabel} onChange={e=>setLinkLabel(e.target.value)} placeholder="e.g. 💬 Book Lash, 🛒 HKTVmall"/>
+    </React.Fragment>
+  );
+}
+
+function EditModal({st,item,onSave,onClose,cats}){
+  const [name,setName]=useState(item.name);
+  const [cat,setCat]=useState(item.cat);
+  const [freq,setFreq]=useState(item.freq);
+  const [days,setDays]=useState(item.days||[]);
+  const [monthDay,setMonthDay]=useState(item.monthDay||1);
+  const [intervalDays,setIntervalDays]=useState(item.intervalDays||30);
+  const [advanceDays,setAdvanceDays]=useState(item.advanceDays||0);
+  const [startDate,setStartDate]=useState(item.startDate||getTodayStr());
+  const [memo,setMemo]=useState(item.memo||"");
+  const [link,setLink]=useState(item.link||"");
+  const [linkLabel,setLinkLabel]=useState(item.linkLabel||"");
+  const save=()=>{
+    if(!name.trim())return alert("Please enter a name.");
+    if(freq==="weekly"&&!days.length)return alert("Select at least one day.");
+    const u={...item,name:name.trim(),cat,freq,advanceDays:Number(advanceDays),memo,link,linkLabel};
+    if(freq==="monthly")u.monthDay=Number(monthDay);
+    if(freq==="weekly")u.days=days;
+    if(freq==="every X days"){u.intervalDays=Number(intervalDays);u.startDate=startDate;}
+    onSave(u);
+  };
+  return(
+    <div style={st.modal} onClick={onClose}>
+      <div style={st.modalBox} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:18,marginBottom:4}}>✏️ Edit Reminder</div>
+        <label style={st.label}>Task Name</label>
+        <input style={st.input} value={name} onChange={e=>setName(e.target.value)}/>
+        <label style={st.label}>Category</label>
+        <select style={st.select} value={cat} onChange={e=>setCat(e.target.value)}>{cats.map(c=><option key={c}>{c}</option>)}</select>
+        <FormFields {...{st,freq,setFreq,days,setDays,monthDay,setMonthDay,intervalDays,setIntervalDays,advanceDays,setAdvanceDays,startDate,setStartDate,memo,setMemo,link,setLink,linkLabel,setLinkLabel}}/>
+        <button style={st.saveBtn} onClick={save}>Save Changes</button>
+        <button style={st.cancelBtn} onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function AddModal({st,onSave,onClose,cats}){
+  const [name,setName]=useState("");
+  const [cat,setCat]=useState(cats[0]||"Other");
+  const [freq,setFreq]=useState("monthly");
+  const [days,setDays]=useState([]);
+  const [monthDay,setMonthDay]=useState(1);
+  const [intervalDays,setIntervalDays]=useState(30);
+  const [advanceDays,setAdvanceDays]=useState(0);
+  const [startDate,setStartDate]=useState(getTodayStr());
+  const [memo,setMemo]=useState("");
+  const [link,setLink]=useState("");
+  const [linkLabel,setLinkLabel]=useState("");
+  const save=()=>{
+    if(!name.trim())return alert("Please enter a name.");
+    if(freq==="weekly"&&!days.length)return alert("Select at least one day.");
+    const item={id:Date.now(),name:name.trim(),cat,freq,advanceDays:Number(advanceDays),done:{},memo,link,linkLabel};
+    if(freq==="monthly")item.monthDay=Number(monthDay);
+    if(freq==="weekly")item.days=days;
+    if(freq==="every X days"){item.intervalDays=Number(intervalDays);item.startDate=startDate;}
+    onSave(item);
+  };
+  return(
+    <div style={st.modal} onClick={onClose}>
+      <div style={st.modalBox} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:18,marginBottom:4}}>+ Add New Reminder</div>
+        <label style={st.label}>Task Name</label>
+        <input style={st.input} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Gym session"/>
+        <label style={st.label}>Category</label>
+        <select style={st.select} value={cat} onChange={e=>setCat(e.target.value)}>{cats.map(c=><option key={c}>{c}</option>)}</select>
+        <FormFields {...{st,freq,setFreq,days,setDays,monthDay,setMonthDay,intervalDays,setIntervalDays,advanceDays,setAdvanceDays,startDate,setStartDate,memo,setMemo,link,setLink,linkLabel,setLinkLabel}}/>
+        <button style={st.saveBtn} onClick={save}>Save Reminder</button>
+        <button style={st.cancelBtn} onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function AddCatModal({st,onSave,onClose,existing}){
+  const [name,setName]=useState("");
+  const save=()=>{const n=name.trim();if(!n)return alert("Enter a name.");if(existing.map(c=>c.toLowerCase()).includes(n.toLowerCase()))return alert("Already exists.");onSave(n);};
+  return(
+    <div style={st.modal} onClick={onClose}>
+      <div style={{...st.modalBox,maxHeight:"unset",padding:"24px 22px"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:18,marginBottom:4}}>🗂️ New Category</div>
+        <label style={st.label}>Category Name</label>
+        <input style={st.input} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Health, Finance, Kids..." autoFocus/>
+        <button style={st.saveBtn} onClick={save}>Add Category</button>
+        <button style={st.cancelBtn} onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function OccChip({st,occ,itemId,done,onToggle}){
+  const du=daysUntil(occ.date),rdu=daysUntil(occ.remind),key=occ.date,isDone=done?.[key],isUrgent=rdu<=0&&!isDone;
+  return(
+    <div style={{marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:7}}>
+        <span style={{...st.occChip,background:isDone?"#ddeedd":C.card}}>
+          {getDow(occ.date)} {formatDate(occ.date)}
+          {du===0?" 🔔 Today!":du===1?" · Tomorrow":du>0?" · in "+du+"d":" · Past"}
+        </span>
+        <button style={{...st.doneBtn,background:isDone?"#b8ddb8":C.card,color:isDone?"#3a7a3a":C.textLight}} onClick={()=>onToggle(itemId,key)}>
+          {isDone?"✓ Done":"Mark done"}
+        </button>
+      </div>
+      {occ.remind!==occ.date&&<div style={isUrgent?st.urgentBadge:st.remindBadge}>{isUrgent?"⚠️ Book now!":"📅 Remind to book: "+formatDate(occ.remind)}</div>}
+    </div>
+  );
+}
+
+function MemoBlock({st,item,onSaveMemo}){
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState(item.memo||"");
+  const save=()=>{onSaveMemo(item.id,draft);setEditing(false);};
+  if(!editing)return(
+    <div>
+      {item.memo
+        ?<div style={st.memoBox}>{item.memo}<br/><button style={{...st.ghostBtn,marginTop:4}} onClick={()=>setEditing(true)}>✏️ Edit notes</button></div>
+        :<button style={st.ghostBtn} onClick={()=>setEditing(true)}>+ notes</button>
+      }
+    </div>
+  );
+  return(
+    <div style={{marginTop:6}}>
+      <textarea style={st.memoTA} value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Write your notes, shopping list..." autoFocus/>
+      <div style={{display:"flex",gap:6,marginTop:4}}>
+        <button style={{...st.doneBtn,background:C.peanut,color:"#fff"}} onClick={save}>Save</button>
+        <button style={{...st.doneBtn,background:C.card,color:C.text}} onClick={()=>setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [items,setItems]=useStorage("routine_items_v5",DEFAULT_ITEMS);
+  const [cats,setCats]=useStorage("routine_cats_v2",DEFAULT_CATS);
+  const [catColors,setCatColors]=useStorage("routine_cat_colors_v2",DEFAULT_CAT_COLORS);
+  const [fontIdx,setFontIdx]=useStorage("routine_font_idx",0);
+  const [sizeIdx,setSizeIdx]=useStorage("routine_size_idx",1);
+  const [showAdd,setShowAdd]=useState(false);
+  const [showAddCat,setShowAddCat]=useState(false);
+  const [editItem,setEditItem]=useState(null);
+  const [expanded,setExpanded]=useState({});
+  const [showSettings,setShowSettings]=useState(false);
+
+  const st=makeStyles(FONTS[fontIdx].value,FONT_SIZES[sizeIdx].base);
+
+  const toggleDone=(id,k)=>setItems(p=>p.map(it=>it.id===id?{...it,done:{...it.done,[k]:!it.done[k]}}:it));
+  const deleteItem=id=>{if(window.confirm("Delete this reminder?"))setItems(p=>p.filter(it=>it.id!==id));};
+  const addItem=item=>{setItems(p=>[...p,item]);setShowAdd(false);};
+  const saveEdit=u=>{setItems(p=>p.map(it=>it.id===u.id?u:it));setEditItem(null);};
+  const saveMemo=(id,memo)=>setItems(p=>p.map(it=>it.id===id?{...it,memo}:it));
+  const toggleExpand=id=>setExpanded(p=>({...p,[id]:!p[id]}));
+  const addCat=name=>{const color=EXTRA_COLORS[ci%EXTRA_COLORS.length];ci++;setCats(p=>[...p,name]);setCatColors(p=>({...p,[name]:color}));setShowAddCat(false);};
+
+  const today=getTodayStr();
+  const todayAlerts=[];
+  items.forEach(item=>nextOccurrences(item,8).forEach(occ=>{if(occ.remind===today||occ.date===today)todayAlerts.push({name:item.name,date:occ.date,isEvent:occ.date===today});}));
+  const presentCats=cats.filter(c=>items.some(i=>i.cat===c));
+
+  return(
+    <div style={st.app}>
+      <div style={st.header}>
+        <div style={st.title}>My Routine Reminders</div>
+        <div style={st.subtitle}>{new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+        <button onClick={()=>setShowSettings(s=>!s)} style={{position:"absolute",top:10,right:12,background:"none",border:"none",cursor:"pointer",padding:0,lineHeight:1,fontSize:10,color:"rgba(255,255,255,0.7)"}}>
+          {showSettings?"▲":"▼"}
+        </button>
+      </div>
+
+      {showSettings&&(
+        <div style={st.settingsBar}>
+          <div><span style={st.settingsLabel}>Font</span>
+            <select style={st.settingsSelect} value={fontIdx} onChange={e=>setFontIdx(Number(e.target.value))}>
+              {FONTS.map((f,i)=><option key={i} value={i}>{f.label}</option>)}
+            </select>
+          </div>
+          <div><span style={st.settingsLabel}>Size</span>
+            <select style={st.settingsSelect} value={sizeIdx} onChange={e=>setSizeIdx(Number(e.target.value))}>
+              {FONT_SIZES.map((s,i)=><option key={i} value={i}>{s.label}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div style={st.todayBox}>
+        <div style={{fontSize:st.secTitle.fontSize,letterSpacing:2,textTransform:"uppercase",opacity:0.85,fontFamily:FONTS[fontIdx].value}}>📌 Today's Alerts</div>
+        {todayAlerts.length===0
+          ?<div style={{fontSize:st.remindBadge.fontSize,opacity:0.85,fontFamily:FONTS[fontIdx].value,marginTop:6}}>Nothing urgent today — enjoy your day! 🌿</div>
+          :todayAlerts.map((a,i)=><div key={i} style={{fontSize:st.occChip.fontSize,marginTop:6,fontFamily:FONTS[fontIdx].value}}>{a.isEvent?"🔔":"📅"} <b>{a.name}</b> — {a.isEvent?"Today!":"Book by today (event: "+formatDate(a.date)+")"}</div>)
+        }
+      </div>
+
+      {presentCats.map(cat=>(
+        <div key={cat} style={st.section}>
+          <div style={st.secTitle}>{cat}</div>
+          {items.filter(i=>i.cat===cat).map(item=>{
+            const allOccs=nextOccurrences(item,6),isExp=expanded[item.id],shown=isExp?allOccs:allOccs.slice(0,1);
+            return(
+              <div key={item.id} style={{...st.card,borderLeftColor:catColors[item.cat]||C.taupe}}>
+                <div style={st.row}>
+                  <div style={{flex:1}}>
+                    <span style={st.itemName}>{item.name}</span>
+                    <div style={{marginTop:3,display:"flex",gap:4,flexWrap:"wrap"}}>
+                      <span style={{...st.tag,background:catColors[item.cat]||C.taupe}}>{item.cat}</span>
+                      <span style={{...st.tag,background:C.taupe}}>
+                        {item.freq==="weekly"?"Weekly · "+(item.days||[]).join(", "):item.freq==="monthly"?"Monthly · day "+item.monthDay:"Every "+item.intervalDays+"d"}
+                      </span>
+                      {item.advanceDays>0&&<span style={{...st.tag,background:C.peanut}}>Book {item.advanceDays}d early</span>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                    <button style={st.iconBtn} onClick={()=>setEditItem(item)}>✏️</button>
+                    <button style={st.iconBtn} onClick={()=>deleteItem(item.id)}>×</button>
+                  </div>
+                </div>
+                {item.link&&<a href={item.link} target="_blank" rel="noreferrer" style={st.linkBtn}>{item.linkLabel||"🔗 Open Link"}</a>}
+                <div style={st.divider}/>
+                <MemoBlock st={st} item={item} onSaveMemo={saveMemo}/>
+                <div style={st.divider}/>
+                <div style={{marginTop:4}}>
+                  {shown.map((occ,i)=><OccChip key={i} st={st} occ={occ} itemId={item.id} done={item.done} onToggle={toggleDone}/>)}
+                </div>
+                <button style={st.ghostBtn} onClick={()=>toggleExpand(item.id)}>{isExp?"▲ Show less":"▼ Show more dates"}</button>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      <div style={st.bottomBtns}>
+        <button style={st.actionBtn(C.peanut)} onClick={()=>setShowAdd(true)}>+ Add Reminder</button>
+        <button style={st.actionBtn(C.taupe)} onClick={()=>setShowAddCat(true)}>🗂️ New Category</button>
+      </div>
+
+      {showAdd&&<AddModal st={st} onSave={addItem} onClose={()=>setShowAdd(false)} cats={cats}/>}
+      {showAddCat&&<AddCatModal st={st} onSave={addCat} onClose={()=>setShowAddCat(false)} existing={cats}/>}
+      {editItem&&<EditModal st={st} item={editItem} onSave={saveEdit} onClose={()=>setEditItem(null)} cats={cats}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
